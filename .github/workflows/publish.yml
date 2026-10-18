@@ -1,0 +1,70 @@
+name: Build tracker and deploy
+
+on:
+  schedule:
+    # PLACEHOLDER cadence (UTC). Tune once you decide how live the site should be, e.g. add
+    # "*/15 17-23,0-4 * * 0" for Sunday games or "*/15 0-4 * * 1,5" for Thu/Mon night.
+    - cron: "0 14,17,20,23 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:  # build + tests only, never deploys
+
+permissions:
+  contents: read
+  id-token: write  # keyless auth to Google Cloud (Workload Identity Federation)
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Today's date (cache key)
+        id: day
+        run: echo "d=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4  # one save per day; later runs restore it and skip saving
+        with:
+          path: |
+            data/picks
+            data/results
+          key: circa-store-${{ steps.day.outputs.d }}
+          restore-keys: circa-store-
+      - run: uv sync --group dev
+
+      - name: Tests
+        run: uv run --group dev pytest -q
+
+      - name: Fetch picks + results, check they reconcile
+        if: github.event_name != 'pull_request'
+        run: uv run circa reconcile
+
+      - name: Export site data
+        if: github.event_name != 'pull_request'
+        run: uv run circa export
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: web
+
+      - name: Authenticate to Google Cloud
+        if: github.event_name != 'pull_request' && vars.GCP_PROJECT_ID != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Deploy to Firebase Hosting
+        if: github.event_name != 'pull_request' && vars.GCP_PROJECT_ID != ''
+        run: npx --yes firebase-tools@13 deploy --only hosting --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive
