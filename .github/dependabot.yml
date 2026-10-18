@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions   # keeps the pinned commit SHAs current
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: uv
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }

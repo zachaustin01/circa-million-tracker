@@ -76,6 +76,8 @@ def parse_pdf(path: Path):
     import pdfplumber  # imported lazily: slow to load, only needed when a PDF actually changed
     lines = []
     with pdfplumber.open(path) as pdf:
+        if len(pdf.pages) > config.MAX_PDF_PAGES:
+            raise ValueError(f"{path.name}: {len(pdf.pages)} pages (limit {config.MAX_PDF_PAGES})")
         for page in pdf.pages:
             lines.extend((page.extract_text() or "").split("\n"))
     return parse_lines(lines)
@@ -141,10 +143,18 @@ def _months_from(start):
         y, m = (y + 1, 1) if m == 12 else (y, m + 1)
 
 
+def check_url(url: str) -> str:
+    """Only ever fetch Circa's own upload folder (the URL comes from a cache file, so don't trust it blindly)."""
+    if not url.startswith(config.PDF_URL_PREFIX) or ".." in url or not url.endswith(".pdf"):
+        raise ValueError(f"refusing to fetch unexpected URL {url!r}")
+    return url
+
+
 def _head(url: str):
+    check_url(url)
     for attempt in range(3):
         try:
-            r = requests.head(url, headers=config.HEADERS, allow_redirects=True, timeout=30)
+            r = requests.head(url, headers=config.HEADERS, allow_redirects=False, timeout=30)  # a redirect = not our file
             return r
         except requests.RequestException:
             if attempt == 2:
@@ -173,11 +183,17 @@ def _unchanged(meta, fp) -> bool:
 
 
 def _download(url: str, dest: Path) -> str:
-    h = hashlib.sha256()
-    with requests.get(url, headers=config.HEADERS, stream=True, timeout=120) as r:
+    check_url(url)
+    h, size = hashlib.sha256(), 0
+    with requests.get(url, headers=config.HEADERS, stream=True, allow_redirects=False, timeout=120) as r:
         r.raise_for_status()
+        if r.status_code != 200 or int(r.headers.get("Content-Length", 0)) > config.MAX_PDF_BYTES:
+            raise ValueError(f"unexpected response for {url}: {r.status_code}, {r.headers.get('Content-Length')} bytes")
         with open(dest, "wb") as f:
             for chunk in r.iter_content(1 << 16):
+                size += len(chunk)
+                if size > config.MAX_PDF_BYTES:
+                    raise ValueError(f"{url} exceeds {config.MAX_PDF_BYTES} bytes")
                 f.write(chunk); h.update(chunk)
     return h.hexdigest()
 

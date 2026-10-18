@@ -16,27 +16,34 @@ on:
     branches: [main]
   pull_request:  # build + tests only, never deploys
 
-permissions:
-  contents: read
-  id-token: write  # keyless auth to Google Cloud (Workload Identity Federation)
+# No permissions by default; each job asks for exactly what it needs.
+permissions: {}
 
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  # Runs everything that executes third-party code (PDF parser, npm packages) with a read-only token and
+  # NO access to Google credentials. The job id is `build`, but its name stays `build-and-deploy` because
+  # that is the status check branch protection requires.
+  build:
+    name: build-and-deploy
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
       - name: Today's date (cache key)
         id: day
         run: echo "d=$(date -u +%F)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4  # one save per day; later runs restore it and skip saving
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4  (one save per day; later runs restore it and skip saving)
         with:
           path: |
             data/picks
@@ -56,21 +63,44 @@ jobs:
         if: github.event_name != 'pull_request'
         run: uv run circa export
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci && npm run build
+      - run: npm ci --ignore-scripts && npm run build
         working-directory: web
 
+      - name: Upload site for deploy
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: site
+          path: web/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  # The only job with id-token. It runs no repo code: it downloads the built site and publishes it.
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && vars.GCP_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write  # keyless auth to Google Cloud (Workload Identity Federation)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4  (for firebase.json only)
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: site
+          path: web/dist
       - name: Authenticate to Google Cloud
-        if: github.event_name != 'pull_request' && vars.GCP_PROJECT_ID != ''
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
-
       - name: Deploy to Firebase Hosting
-        if: github.event_name != 'pull_request' && vars.GCP_PROJECT_ID != ''
-        run: npx --yes firebase-tools@13 deploy --only hosting --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive
+        run: npx --yes firebase-tools@13.35.1 deploy --only hosting --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive

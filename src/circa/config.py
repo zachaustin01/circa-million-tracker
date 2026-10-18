@@ -6,6 +6,9 @@ WEEKS = 18
 # Circa uploads each PDF to the WordPress media folder of the month it was posted, so the month varies.
 PDF_URL = ("https://www.circasports.com/wp-content/uploads/{year}/{month:02d}/"
            "Circa-Sports-Million-{contest}-Week-{week}-Selections.pdf")
+PDF_URL_PREFIX = "https://www.circasports.com/wp-content/uploads/"  # every PDF URL must start with this
+MAX_PDF_BYTES = 50 * 1024 * 1024   # real files are ~3 MB
+MAX_PDF_PAGES = 500                # real files are ~90 pages
 PDF_FIRST_MONTH = (SEASON, 8)   # earliest folder to probe
 PDF_LAST_MONTH = (SEASON + 1, 2)
 REVALIDATE_LAST = 2             # re-check the newest N weeks' PDFs for corrections; older ones are frozen

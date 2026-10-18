@@ -23,15 +23,15 @@ Not covered: Saturday games late in the season, Thanksgiving, Christmas and inte
 ## What is configured (as of 2026-10-18)
 Live site: https://circa-million-tracker-za.web.app
 
-- GCP project `circa-million-tracker-za` (number `955147654445`), owner `zachaustin01@gmail.com`, **billing: disabled**.
+- GCP project `circa-million-tracker-za`, owned by the repo owner's Google account, **billing: disabled**.
   Verify any time (must print False):
   `gcloud billing projects describe circa-million-tracker-za --format="value(billingEnabled)"`
 - Firebase added (Spark plan); Hosting site `circa-million-tracker-za`; live channel keeps 1 release.
 - APIs enabled: firebase, firebasehosting, iamcredentials, sts, serviceusage, iam (none billable).
-- Service account `gh-deployer@circa-million-tracker-za.iam.gserviceaccount.com` with only
+- Deploy service account `gh-deployer` (in that project) with only
   `roles/firebasehosting.admin` and `roles/serviceusage.serviceUsageConsumer`.
 - Workload identity pool `github`, provider `github-oidc`, condition `assertion.repository=='zachaustin01/circa-million-tracker'`.
-- Repo variables (identifiers, not secrets): `GCP_PROJECT_ID`, `GCP_DEPLOY_SA`, `GCP_WIF_PROVIDER`.
+- Repo variables (identifiers, not secrets; values are in the repo's Actions settings): `GCP_PROJECT_ID`, `GCP_DEPLOY_SA`, `GCP_WIF_PROVIDER`.
 - `main` is protected like ballpark-projections: PR required, `build-and-deploy` must pass, no force-push or
   deletion, applies to admins. Default workflow token is read-only; PRs build and test only, never deploy.
 
@@ -50,3 +50,14 @@ gh run list --repo zachaustin01/circa-million-tracker
 gh workflow run publish.yml --repo zachaustin01/circa-million-tracker   # manual refresh + deploy
 ```
 Changes to `main` go through pull requests; merging redeploys.
+
+## Security model
+- CI is two jobs. `build` (read-only token, no Google credentials) runs everything that executes third-party code:
+  the PDF parser, `npm ci --ignore-scripts`, the build. `deploy` is the only job with `id-token: write`; it runs no
+  repo code, only downloads the built site and publishes it with a pinned `firebase-tools`. Caveat: a compromised
+  build could still alter the site content it hands over; the split removes credential theft and arbitrary
+  Google API use, not content tampering.
+- Third-party actions are pinned to commit SHAs (Dependabot keeps them current).
+- The site sends a strict Content-Security-Policy (`default-src 'none'`, scripts/styles/connect from self only).
+- PDFs are fetched only from `https://www.circasports.com/wp-content/uploads/` (no redirects, 50 MB / 500 page caps).
+- The site shows when scores were last fetched and warns if live games have stale scores.

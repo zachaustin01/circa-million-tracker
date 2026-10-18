@@ -39,3 +39,14 @@ def test_garbage_raises():
 def test_unknown_team_is_loud():
     with pytest.raises(ValueError):
         parse_row("X-1 1. WHALERS -1 2. COWBOYS +1 3. JAGUARS -1 4. EAGLES +1 5. STEELERS -1")
+
+
+def test_check_url_only_allows_circa_uploads():
+    from circa.picks import check_url
+    ok = "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Sports-Million-VIII-Week-5-Selections.pdf"
+    assert check_url(ok) == ok
+    for bad in ("http://www.circasports.com/wp-content/uploads/a.pdf", "https://evil.example/wp-content/uploads/a.pdf",
+                "https://www.circasports.com/wp-content/uploads/../../x.pdf", "https://www.circasports.com/wp-content/uploads/a.exe",
+                "https://www.circasports.com.evil.example/wp-content/uploads/a.pdf"):
+        with pytest.raises(ValueError):
+            check_url(bad)

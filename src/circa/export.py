@@ -43,10 +43,17 @@ def export() -> None:
         summaries.append({"week": w.week, "entries": len(w.entries), "games": len(w.games),
                           "pre": count("pre"), "live": count("in"), "final": count("post")})
 
+    # When the *sources* were last fetched (not when we exported), so the site can flag stale data.
+    cur = max((w.week for w in weeks), default=None)
+    res = rs.load_week(cur) if cur else []
+    meta = pk.read_meta(cur) if cur else None
+    results_as_of = max((g["fetched_at"] for g in res), default=None)
+    picks_as_of = meta.get("fetched_at") if meta else None
+
     _write(WEB_DATA / "entries.json", names)
     _write(WEB_DATA / "index.json", {
         "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "season": config.SEASON, "contest": config.CONTEST, "quarters": config.QUARTERS,
-        "current_week": max((w.week for w in weeks), default=None), "weeks": summaries,
+        "current_week": cur, "results_as_of": results_as_of, "picks_as_of": picks_as_of, "weeks": summaries,
     })
     print(f"exported {len(weeks)} week(s), {len(names)} entries -> {WEB_DATA}")
