@@ -1,7 +1,7 @@
 export interface WeekSummary { week: number; entries: number; games: number; pre: number; live: number; final: number }
 export interface RootIndex {
   updated: string; season: number; contest: string; quarters: [number, number][];
-  current_week: number | null; weeks: WeekSummary[];
+  current_week: number | null; results_as_of: string | null; picks_as_of: string | null; weeks: WeekSummary[];
 }
 export interface GameSide { team: string; score: number | null; n: number | null; line: number | null }
 export interface Game {

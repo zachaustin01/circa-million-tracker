@@ -136,6 +136,11 @@ export default function App() {
   if (err) return <div className="wrap"><p className="err">Couldn't load data: {err}</p></div>;
   if (!root || week == null) return <div className="wrap"><p className="muted">Loading…</p></div>;
 
+  // Games are live but the score source hasn't been fetched recently: say so instead of looking current.
+  const liveNow = (games[root.current_week ?? -1] ?? []).some(g => g.state === "in");
+  const ageMin = root.results_as_of ? Math.floor((Date.now() - Date.parse(root.results_as_of)) / 60000) : null;
+  const staleMins = liveNow && ageMin != null && ageMin > 45 ? ageMin : null;
+
   const pageRows = filtered.slice(page * PAGE, (page + 1) * PAGE);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const wkGames = games[week] ?? [];
@@ -159,7 +164,10 @@ export default function App() {
     <div className="wrap">
       <header>
         <h1>Circa Million <span className="muted">{root.contest} · {root.season}</span></h1>
-        <p className="muted small">Unofficial fan tracker. Updated {new Date(root.updated).toLocaleString()}{inProgress ? " · games in progress; scores update about every 15 minutes" : ""}.</p>
+        <p className="muted small">Unofficial fan tracker. Site built {new Date(root.updated).toLocaleString()}
+          {root.results_as_of && <> · scores as of {new Date(root.results_as_of).toLocaleString()}</>}
+          {inProgress ? " · games in progress; scores update about every 15 minutes" : ""}.</p>
+        {staleMins != null && <p className="warn">⚠ Scores for in-progress games were last fetched {staleMins >= 120 ? `${Math.round(staleMins / 60)} hours` : `${staleMins} minutes`} ago and may be out of date.</p>}
         <nav>
           <button className={tab === "leaderboard" ? "on" : ""} onClick={() => setTab("leaderboard")}>Leaderboard</button>
           <button className={tab === "games" ? "on" : ""} onClick={() => setTab("games")}>Games</button>
