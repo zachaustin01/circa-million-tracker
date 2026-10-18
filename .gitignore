@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+data/picks/
+data/results/
+output/
+*.egg-info/
+web/node_modules/
+web/dist/
+web/public/data/
+.firebase/
