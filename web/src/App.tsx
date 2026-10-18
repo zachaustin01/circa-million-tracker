@@ -5,6 +5,7 @@ import type { Game, RootIndex, WeekPicks } from "./types";
 
 type Tab = "leaderboard" | "games" | "top";
 const PAGE = 100;
+const MONEY_PLACES = 100;  // Circa Million pays the top 100 finishers; ties at the cutoff are treated as in the money
 const fmtLine = (l: number) => (l > 0 ? "+" : l < 0 ? "−" : "") + (l === 0 ? "PK" : String(Math.abs(l)).replace(".5", "½").replace(/^0½$/, "½"));
 const fmtPts = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1));
 const fmtTime = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -78,13 +79,16 @@ export default function App() {
       return { pts, order, rk, size };
     };
     const c = rank(cur), p = prev.length ? rank(prev) : null;
+    const lead = c.pts[c.order[0]];
+    const cutoff = c.pts[c.order[Math.min(MONEY_PLACES, c.order.length) - 1]];
     const wk = tallies[week];
     const inWeek = new Set(picks[week].e);
     const out = c.order.filter(e => inWeek.has(e) || cur.some(w => tallies[w][e * TALLY] + tallies[w][e * TALLY + 1] + tallies[w][e * TALLY + 2] > 0)).map(e => {
       let w = 0, l = 0, ps = 0, pend = 0;
       for (const x of cur) { const t = tallies[x], o = e * TALLY; w += t[o] + (live ? t[o + 3] : 0); l += t[o + 1] + (live ? t[o + 4] : 0); ps += t[o + 2] + (live ? t[o + 5] : 0); pend += t[o + 6] + (live ? 0 : t[o + 3] + t[o + 4] + t[o + 5]); }
       return { e, rank: c.rk[e], tie: (c.size.get(c.rk[e]) ?? 1) > 1, prev: p ? p.rk[e] : null, pts: c.pts[e],
-        wkPts: points(wk, e * TALLY, live), w, l, p: ps, pend };
+        wkPts: points(wk, e * TALLY, live), w, l, p: ps, pend,
+        back: lead - c.pts[e], toMoney: Math.max(0, cutoff - c.pts[e]), itm: c.pts[e] >= cutoff };
     });
     return { rows: out, weeks: cur };
   }, [root, week, quarter, live, loaded, tallies, names, picks]);
@@ -194,7 +198,7 @@ export default function App() {
         <p className="muted small">{filtered.length.toLocaleString()} entries · {quarter ? `Q${quarter}` : "season"} points through week {week}</p>
         <div className="scroll"><table>
           <thead><tr><th></th><th>Rank</th><th className="hm">Prev</th><th className="l">Entry</th>
-            <th className="hm l" colSpan={5}>Week {week} selections</th><th>Pts</th><th className="hm">Wk</th><th>W-L-P</th><th className="hm">Pending</th></tr></thead>
+            <th className="hm l" colSpan={5}>Week {week} selections</th><th>Pts</th><th className="hm" title="Points behind 1st place">Back</th>{quarter === 0 && <th className="hm" title={`Points behind ${MONEY_PLACES}th place (ITM = in the money, top ${MONEY_PLACES})`}>To $</th>}<th className="hm">Wk</th><th>W-L-P</th><th className="hm">Pending</th></tr></thead>
           <tbody>{pageRows.map(r => {
             const name = names[r.e], isOpen = open.has(r.e), mine = picksOf(r.e);
             const mv = r.prev == null ? 0 : r.prev - r.rank;
@@ -206,10 +210,10 @@ export default function App() {
                 <td className="hm muted">{r.prev == null ? "–" : <>{r.tie ? "" : ""}{r.prev}{mv > 0 && <span className="up"> ▲{mv}</span>}{mv < 0 && <span className="dn"> ▼{-mv}</span>}</>}</td>
                 <td className="l name">{name}</td>
                 {[0, 1, 2, 3, 4].map(k => <td key={k} className="hm">{mine[k] != null ? chip(mine[k]) : ""}</td>)}
-                <td><b>{fmtPts(r.pts)}</b></td><td className="hm">{fmtPts(r.wkPts)}</td>
+                <td><b>{fmtPts(r.pts)}</b></td><td className="hm muted">{r.back === 0 ? "—" : fmtPts(r.back)}</td>{quarter === 0 && <td className="hm">{r.itm ? <span className="itm">ITM</span> : <span className="muted">{fmtPts(r.toMoney)}</span>}</td>}<td className="hm">{fmtPts(r.wkPts)}</td>
                 <td>{r.w}-{r.l}-{r.p}</td><td className="hm">{r.pend}</td>
               </tr>
-              {isOpen && <tr className="picks-row"><td colSpan={13}>{mine.length ? mine.map(n => <span key={n}>{chip(n)} </span>) : <span className="muted">No selections for week {week}</span>}</td></tr>}
+              {isOpen && <tr className="picks-row"><td colSpan={15}>{mine.length ? mine.map(n => <span key={n}>{chip(n)} </span>) : <span className="muted">No selections for week {week}</span>}</td></tr>}
             </Fragment>;
           })}</tbody>
         </table></div>
