@@ -3,7 +3,7 @@ import { fetchEntries, fetchGames, fetchPicks, fetchRoot } from "./api";
 import { TALLY, indexGames, points, selection, tallyWeek } from "./scoring";
 import type { Game, RootIndex, WeekPicks } from "./types";
 
-type Tab = "leaderboard" | "games";
+type Tab = "leaderboard" | "games" | "top";
 const PAGE = 100;
 const fmtLine = (l: number) => (l > 0 ? "+" : l < 0 ? "−" : "") + (l === 0 ? "PK" : String(Math.abs(l)).replace(".5", "½").replace(/^0½$/, "½"));
 const fmtPts = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1));
@@ -30,6 +30,7 @@ export default function App() {
   const [favOnly, setFavOnly] = useState(false);
   const [live, setLive] = useStored("circa-live", true);
   const [page, setPage] = useState(0);
+  const [topN, setTopN] = useStored<number>("circa-topn", 100);
   const [open, setOpen] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -95,6 +96,41 @@ export default function App() {
     return rows.rows.filter(r => (!q || names[r.e].toLowerCase().includes(q)) && (!favOnly || fs.has(names[r.e])));
   }, [rows, search, favOnly, favs, names]);
 
+
+  // Top-N entering the week: rank by final points through week-1 (ties at the cutoff are kept),
+  // then see which selections that group took this week and how they are doing.
+  const topStats = useMemo(() => {
+    if (tab !== "top" || !root || week == null || !loaded) return null;
+    if (week < 2) return { empty: true as const };
+    const pts = new Float32Array(names.length);
+    for (let w = 1; w < week; w++) { const t = tallies[w]; for (let e = 0; e < names.length; e++) pts[e] += points(t, e * TALLY, false); }
+    const order = Array.from(pts.keys()).sort((a, b) => pts[b] - pts[a] || (names[a] < names[b] ? -1 : 1));
+    const cut = pts[order[Math.min(topN, order.length) - 1]];
+    const group = new Set(order.filter(e => pts[e] >= cut));
+    const wp = picks[week], t = tallies[week];
+    const field = new Map<number, number>(), top = new Map<number, number>();
+    let submitted = 0, gPts = 0, fPts = 0, w = 0, l = 0, p = 0, pend = 0;
+    for (let i = 0; i < wp.e.length; i++) {
+      const e = wp.e[i], o = e * TALLY, inG = group.has(e);
+      const ep = points(t, o, live);
+      fPts += ep;
+      if (inG) {
+        submitted++; gPts += ep;
+        w += t[o] + (live ? t[o + 3] : 0); l += t[o + 1] + (live ? t[o + 4] : 0); p += t[o + 2] + (live ? t[o + 5] : 0);
+        pend += t[o + 6] + (live ? 0 : t[o + 3] + t[o + 4] + t[o + 5]);
+      }
+      for (let k = 0; k < 5; k++) {
+        const n = wp.p[i * 5 + k];
+        field.set(n, (field.get(n) ?? 0) + 1);
+        if (inG) top.set(n, (top.get(n) ?? 0) + 1);
+      }
+    }
+    const rows = [...top.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      .map(([n, c]) => ({ n, c, topPct: (100 * c) / submitted, fieldPct: (100 * (field.get(n) ?? 0)) / wp.e.length }));
+    return { empty: false as const, size: group.size, cut, submitted, rows, w, l, p, pend,
+      gAvg: submitted ? gPts / submitted : 0, fAvg: wp.e.length ? fPts / wp.e.length : 0, fieldN: wp.e.length };
+  }, [tab, root, week, loaded, tallies, names, picks, topN, live]);
+
   useEffect(() => setPage(0), [search, favOnly, week, quarter, live]);
 
   if (err) return <div className="wrap"><p className="err">Couldn't load data: {err}</p></div>;
@@ -127,6 +163,7 @@ export default function App() {
         <nav>
           <button className={tab === "leaderboard" ? "on" : ""} onClick={() => setTab("leaderboard")}>Leaderboard</button>
           <button className={tab === "games" ? "on" : ""} onClick={() => setTab("games")}>Games</button>
+          <button className={tab === "top" ? "on" : ""} onClick={() => setTab("top")}>Top picks</button>
         </nav>
         <div className="controls">
           <label>Week <select value={week} onChange={e => setWeek(+e.target.value)}>
@@ -138,6 +175,8 @@ export default function App() {
             <input type="search" placeholder="Search entries" value={search} onChange={e => setSearch(e.target.value)} />
             <label className="chk"><input type="checkbox" checked={favOnly} onChange={e => setFavOnly(e.target.checked)} /> ★ only</label>
           </>}
+          {tab === "top" && <label>Top <select value={topN} onChange={e => setTopN(+e.target.value)}>
+            {[25, 50, 100, 250].map(n => <option key={n} value={n}>{n}</option>)}</select> entering the week</label>}
           <label className="chk"><input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} /> Count games in progress</label>
         </div>
       </header>
@@ -188,6 +227,37 @@ export default function App() {
         </div>)}
         {wkGames.length === 0 && <p className="muted">No games stored for this week yet.</p>}
       </div>)}
+
+
+      {tab === "top" && (!topStats ? <p className="muted">Loading…</p> : topStats.empty ?
+        <p className="muted">There are no standings before week 1, so there is no top group to compare.</p> : (() => {
+        const ts = topStats, gp = ts.w + ts.l + ts.p;
+        const stat = (n: number) => { const s = selection(wkIdx, n); return !s || !s.res || (!s.final && !live) ? null : s; };
+        return <>
+          <div className="summary">
+            <div><span className="muted small">Group</span><b>Top {ts.size.toLocaleString()}</b><span className="muted small">through week {week - 1}, cutoff {fmtPts(ts.cut)} pts{ts.size > topN ? " (ties kept)" : ""}</span></div>
+            <div><span className="muted small">Week {week} record</span><b>{ts.w}-{ts.l}-{ts.p}</b><span className="muted small">{gp ? ((100 * (ts.w + 0.5 * ts.p)) / gp).toFixed(1) + "% win" : "no graded picks"}{ts.pend ? ` · ${ts.pend} pending` : ""}</span></div>
+            <div><span className="muted small">Avg points / entry</span><b>{ts.gAvg.toFixed(2)}</b><span className="muted small">field {ts.fAvg.toFixed(2)} · {(ts.gAvg - ts.fAvg >= 0 ? "+" : "−") + Math.abs(ts.gAvg - ts.fAvg).toFixed(2)}</span></div>
+            <div><span className="muted small">Submitted</span><b>{ts.submitted.toLocaleString()}</b><span className="muted small">of {ts.size.toLocaleString()} in group</span></div>
+          </div>
+          <div className="scroll"><table>
+            <thead><tr><th className="l">Selection</th><th className="l hm">Game</th><th>Top picks</th><th>% of top</th><th className="hm">% of field</th><th className="hm">Leverage</th><th>Status</th></tr></thead>
+            <tbody>{ts.rows.map(r => {
+              const s = stat(r.n), sel = selection(wkIdx, r.n), lev = r.topPct - r.fieldPct;
+              const label = !s ? "—" : s.final ? { W: "Covered", L: "Missed", P: "Push" }[s.res!] : { W: "Covering", L: "Not covering", P: "Push" }[s.res!];
+              return <tr key={r.n}>
+                <td className="l">{chip(r.n)}</td>
+                <td className="l hm muted">{sel ? `${sel.game.away.team} @ ${sel.game.home.team}` : ""}</td>
+                <td>{r.c.toLocaleString()}</td><td><b>{r.topPct.toFixed(1)}%</b></td>
+                <td className="hm">{r.fieldPct.toFixed(1)}%</td>
+                <td className={"hm " + (lev > 0 ? "up" : lev < 0 ? "dn" : "")}>{(lev >= 0 ? "+" : "−") + Math.abs(lev).toFixed(1)}</td>
+                <td>{s ? <span className={"pick " + (s.final ? "" : "live ") + s.res}>{label}</span> : <span className="muted">{label}</span>}</td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+          <p className="muted small">Leverage = % of the top group on a pick minus % of the whole field, in percentage points. Population is the {ts.fieldN.toLocaleString()} entries with week {week} selections.</p>
+        </>;
+      })())}
 
       <footer className="muted small">
         Picks are parsed from Circa's published selection PDFs; scores come from ESPN. Win = 1 point, push = ½.
