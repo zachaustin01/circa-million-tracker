@@ -2,9 +2,15 @@ name: Build tracker and deploy
 
 on:
   schedule:
-    # PLACEHOLDER cadence (UTC). Tune once you decide how live the site should be, e.g. add
-    # "*/15 17-23,0-4 * * 0" for Sunday games or "*/15 0-4 * * 1,5" for Thu/Mon night.
-    - cron: "0 14,17,20,23 * * *"
+    # All times UTC. 15-minute refresh through the game windows, every 3 hours otherwise.
+    # (GitHub cron is best-effort and can start a few minutes late under load.)
+    - cron: "0 */3 * * *"          # baseline: picks PDFs (posted any day) + stragglers
+    - cron: "*/15 23 * * 4"        # Thu night game: 7pm ET kickoff is 23:15-00:15 UTC
+    - cron: "*/15 0-4 * * 5"       #   ... through ~11:30pm ET
+    - cron: "*/15 13-23 * * 0"     # Sunday: London 9:30am ET through the late window
+    - cron: "*/15 0-4 * * 1"       #   ... Sunday night game ends ~midnight ET
+    - cron: "*/15 23 * * 1"        # Monday night game
+    - cron: "*/15 0-4 * * 2"       #   ... through ~11:30pm ET
   workflow_dispatch:
   push:
     branches: [main]

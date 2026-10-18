@@ -15,8 +15,10 @@ Firebase Hosting (CDN) --> visitors fetch static files only; no server, no datab
 Cache: key is the UTC date (one save/day). If evicted, the next run re-downloads all published PDFs (~1 min) and
 refetches results, so nothing is lost; the PDFs and ESPN are the sources of truth.
 
-Schedule: the cron in `.github/workflows/publish.yml` is a **placeholder** (4x/day). Pick the real cadence for
-picks (Thu/Fri/Sat when PDFs appear) and results (game windows) and edit it there.
+Schedule (UTC, in `.github/workflows/publish.yml`): every 3 hours as a baseline, plus every 15 minutes during
+the game windows: Thu 23:00-04:59 (Thu night game), Sun 13:00 through Mon 04:59, and Mon 23:00-Tue 04:59.
+Not covered: Saturday games late in the season, Thanksgiving, Christmas and international Friday games; use
+**Run workflow** (or add a cron line) for those. Every run also deploys, which is free (public repo, Spark plan).
 
 ## What is configured (as of 2026-10-18)
 Live site: https://circa-million-tracker-za.web.app
