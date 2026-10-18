@@ -47,11 +47,11 @@ export default function App() {
     }
   }, [root, week]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // refresh the current week's scores while games are in progress
+  // pick up newly deployed scores while games are in progress (data only changes on deploy; CDN caches 5 min)
   const inProgress = week != null && games[week]?.some(g => g.state === "in");
   useEffect(() => {
     if (!inProgress || week == null) return;
-    const t = setInterval(() => fetchGames(week).then(g => setGames(s => ({ ...s, [week]: g })), () => {}), 60_000);
+    const t = setInterval(() => fetchGames(week).then(g => setGames(s => ({ ...s, [week]: g })), () => {}), 300_000);
     return () => clearInterval(t);
   }, [inProgress, week]);
 
@@ -123,7 +123,7 @@ export default function App() {
     <div className="wrap">
       <header>
         <h1>Circa Million <span className="muted">{root.contest} · {root.season}</span></h1>
-        <p className="muted small">Unofficial fan tracker. Updated {new Date(root.updated).toLocaleString()}{inProgress ? " · games in progress, scores refresh every minute" : ""}.</p>
+        <p className="muted small">Unofficial fan tracker. Updated {new Date(root.updated).toLocaleString()}{inProgress ? " · games in progress; scores update about every 15 minutes" : ""}.</p>
         <nav>
           <button className={tab === "leaderboard" ? "on" : ""} onClick={() => setTab("leaderboard")}>Leaderboard</button>
           <button className={tab === "games" ? "on" : ""} onClick={() => setTab("games")}>Games</button>
