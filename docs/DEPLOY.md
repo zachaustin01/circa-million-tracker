@@ -27,10 +27,17 @@ Live site: https://circa-million-tracker-za.web.app
   Verify any time (must print False):
   `gcloud billing projects describe circa-million-tracker-za --format="value(billingEnabled)"`
 - Firebase added (Spark plan); Hosting site `circa-million-tracker-za`; live channel keeps 1 release.
-- APIs enabled: firebase, firebasehosting, iamcredentials, sts, serviceusage, iam (none billable).
+- APIs: the six we use (firebase, firebasehosting, iam, iamcredentials, sts, serviceusage) plus GCP's default
+  new-project set (BigQuery, Storage, Datastore, logging, etc.), which cannot be disabled without breaking each
+  other and are unusable without billing. Firebase's extras (Identity Toolkit, Pub/Sub, Remote Config, Rules, FCM,
+  Testing, App Engine, ...) and its auto-created browser API key were removed on 2026-10-18.
+- The Firebase Admin service account (`firebase-adminsdk-*`) was auto-created, has no downloadable keys, and is
+  unused; left alone to avoid breaking Firebase management.
 - Deploy service account `gh-deployer` (in that project) with only
   `roles/firebasehosting.admin` and `roles/serviceusage.serviceUsageConsumer`.
-- Workload identity pool `github`, provider `github-oidc`, condition `assertion.repository=='zachaustin01/circa-million-tracker'`.
+- Workload identity pool `github`, provider `github-oidc`. Condition (hardened 2026-10-18): repository is this repo AND
+  `ref == refs/heads/main` AND `job_workflow_ref == .../.github/workflows/publish.yml@refs/heads/main`, so only the
+  deploy workflow on `main` can mint deploy credentials.
 - Repo variables (identifiers, not secrets; values are in the repo's Actions settings): `GCP_PROJECT_ID`, `GCP_DEPLOY_SA`, `GCP_WIF_PROVIDER`.
 - `main` is protected like ballpark-projections: PR required, `build-and-deploy` must pass, no force-push or
   deletion, applies to admins. Default workflow token is read-only; PRs build and test only, never deploy.
@@ -61,3 +68,7 @@ Changes to `main` go through pull requests; merging redeploys.
 - The site sends a strict Content-Security-Policy (`default-src 'none'`, scripts/styles/connect from self only).
 - PDFs are fetched only from `https://www.circasports.com/wp-content/uploads/` (no redirects, 50 MB / 500 page caps).
 - The site shows when scores were last fetched and warns if live games have stale scores.
+- GitHub repo: secret scanning + push protection, Dependabot alerts + security updates + weekly version updates
+  (actions, uv, npm), private vulnerability reporting, actions must be pinned to SHAs, fork PRs from all outside
+  contributors need approval, default token read-only, wiki/projects off, branches deleted on merge.
+- Scheduled workflows are paused by GitHub after 60 days without repo activity; push a commit before next season.
