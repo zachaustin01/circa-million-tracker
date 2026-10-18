@@ -3,9 +3,24 @@ updates:
   - package-ecosystem: github-actions   # keeps the pinned commit SHAs current
     directory: /
     schedule: { interval: weekly }
+    cooldown: { default-days: 3 }       # don't take a release hours after it ships
+    groups:
+      actions: { patterns: ["*"] }      # one PR for all action bumps
   - package-ecosystem: uv
     directory: /
     schedule: { interval: weekly }
+    cooldown: { default-days: 3 }
+    groups:
+      python: { patterns: ["*"], update-types: [minor, patch] }
   - package-ecosystem: npm
     directory: /web
     schedule: { interval: weekly }
+    cooldown: { default-days: 3 }
+    ignore:
+      # React 19 grows the bundle ~23 KB gzip with nothing we need; revisit deliberately, not via a bot.
+      - { dependency-name: react, update-types: ["version-update:semver-major"] }
+      - { dependency-name: react-dom, update-types: ["version-update:semver-major"] }
+      - { dependency-name: "@types/react", update-types: ["version-update:semver-major"] }
+      - { dependency-name: "@types/react-dom", update-types: ["version-update:semver-major"] }
+    groups:
+      npm: { patterns: ["*"], update-types: [minor, patch] }
