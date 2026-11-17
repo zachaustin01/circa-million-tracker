@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { fetchEntries, fetchGames, fetchPicks, fetchRoot } from "./api";
 import { TALLY, indexGames, points, selection, tallyWeek } from "./scoring";
+import Trend, { type Series } from "./Trend";
 import type { Game, RootIndex, WeekPicks } from "./types";
 
-type Tab = "leaderboard" | "games" | "top";
+type Tab = "leaderboard" | "games" | "top" | "trend";
 const PAGE = 100;
 const MONEY_PLACES = 100;  // Circa Million pays the top 100 finishers; ties at the cutoff are treated as in the money
 const fmtLine = (l: number) => (l > 0 ? "+" : l < 0 ? "−" : "") + (l === 0 ? "PK" : String(Math.abs(l)).replace(".5", "½").replace(/^0½$/, "½"));
@@ -28,6 +29,7 @@ export default function App() {
   const [quarter, setQuarter] = useState(0);            // 0 = full season, 1..4
   const [search, setSearch] = useState("");
   const [favs, setFavs] = useStored<string[]>("circa-favs", []);
+  const [shownTrend, setShownTrend] = useStored<string[]>("circa-trend-shown", []);   // starred entries are off until tapped on
   const [favOnly, setFavOnly] = useState(false);
   const [live, setLive] = useStored("circa-live", true);
   const [page, setPage] = useState(0);
@@ -135,6 +137,27 @@ export default function App() {
       gAvg: submitted ? gPts / submitted : 0, fAvg: wp.e.length ? fPts / wp.e.length : 0, fieldN: wp.e.length };
   }, [tab, root, week, loaded, tallies, names, picks, topN, live]);
 
+  // Season rank after each week for every starred entry (ties share the better rank, as on the leaderboard).
+  const trend = useMemo(() => {
+    if (tab !== "trend" || week == null || !loaded) return null;
+    const ids = favs.map(n => names.indexOf(n)).filter(e => e >= 0);
+    const pts = new Float32Array(names.length);
+    const ranks: (number | null)[][] = ids.map(() => []);
+    for (let w = 1; w <= week; w++) {
+      const t = tallies[w];
+      for (let e = 0; e < names.length; e++) pts[e] += points(t, e * TALLY, live);
+      const sorted = Float32Array.from(pts).sort();   // ascending; rank = 1 + count strictly greater
+      const lo = (v: number) => { let a = 0, b = sorted.length; while (a < b) { const m = (a + b) >> 1; if (sorted[m] <= v) a = m + 1; else b = m; } return a; };
+      ids.forEach((e, i) => ranks[i].push(1 + sorted.length - lo(pts[e])));
+    }
+    // weeks before an entry's first selections are not meaningful: blank them
+    ids.forEach((e, i) => {
+      const first = Array.from({ length: week }, (_, k) => k + 1).find(w => picks[w].e.includes(e));
+      for (let k = 0; k < week; k++) if (first == null || k + 1 < first) ranks[i][k] = null;
+    });
+    return ids.map((e, i): Series => ({ name: names[e], ranks: ranks[i] }));
+  }, [tab, week, loaded, favs, names, tallies, picks, live]);
+
   useEffect(() => setPage(0), [search, favOnly, week, quarter, live]);
 
   if (err) return <div className="wrap"><p className="err">Couldn't load data: {err}</p></div>;
@@ -176,6 +199,7 @@ export default function App() {
           <button className={tab === "leaderboard" ? "on" : ""} onClick={() => setTab("leaderboard")}>Leaderboard</button>
           <button className={tab === "games" ? "on" : ""} onClick={() => setTab("games")}>Games</button>
           <button className={tab === "top" ? "on" : ""} onClick={() => setTab("top")}>Top picks</button>
+          <button className={tab === "trend" ? "on" : ""} onClick={() => setTab("trend")}>★ Trends</button>
         </nav>
         <div className="controls">
           <label>Week <select value={week} onChange={e => setWeek(+e.target.value)}>
@@ -240,6 +264,13 @@ export default function App() {
         {wkGames.length === 0 && <p className="muted">No games stored for this week yet.</p>}
       </div>)}
 
+
+      {tab === "trend" && (favs.length === 0 ? <p className="muted">Star entries on the Leaderboard (☆) to chart their season rank by week here.</p> :
+        !trend ? <p className="muted">Loading week data…</p> : <>
+          <p className="muted small">Season rank after each week through week {week} for {trend.length} starred {trend.length === 1 ? "entry" : "entries"} (1st at the top). Tap a name to show or hide it.</p>
+          <Trend series={trend} weeks={week} moneyPlaces={MONEY_PLACES} hidden={trend.map(t => t.name).filter(n => !shownTrend.includes(n))}
+            onToggle={n => setShownTrend(shownTrend.includes(n) ? shownTrend.filter(x => x !== n) : [...shownTrend, n])} />
+        </>)}
 
       {tab === "top" && (!topStats ? <p className="muted">Loading…</p> : topStats.empty ?
         <p className="muted">There are no standings before week 1, so there is no top group to compare.</p> : (() => {

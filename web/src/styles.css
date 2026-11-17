@@ -47,3 +47,16 @@ footer { margin: 24px 0 8px; }
 .summary b { font-size: 1.35rem; }
 .warn { background: var(--pbg); color: var(--p); border-radius: 8px; padding: 6px 10px; font-size: .88rem; }
 .itm { background: var(--wbg); color: var(--w); border-radius: 999px; padding: 2px 8px; font-size: .75rem; font-weight: 700; }
+.trend { overflow-x: hidden; } .trend svg { display: block; touch-action: pan-y; user-select: none; }
+.trend svg.zoomed { touch-action: none; cursor: grab; }
+.zoombar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.zoombar button { border: 1px solid var(--line); background: var(--card); color: var(--fg); min-width: 36px; height: 36px; border-radius: 999px; font-size: 1.1rem; cursor: pointer; }
+.zoombar button.reset { font-size: .85rem; padding: 0 12px; }
+.zoombar button:disabled { opacity: .4; cursor: default; }
+.trend .grid { stroke: var(--line); } .trend .money { stroke: var(--w); stroke-dasharray: 5 4; }
+.trend .axis { fill: var(--muted); font-size: 11px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: .9rem; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legend button { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.legend button.off { opacity: .45; text-decoration: line-through; }
+.legend button.off i { background: var(--muted) !important; }
